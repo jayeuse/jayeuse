@@ -152,64 +152,32 @@ def record_header(t: dict, key_w: int, value_w: int) -> str:
 
 
 def hero(t: dict) -> str:
+    # Static on purpose: renderers that pause SMIL would freeze a typing effect
+    # at its first frame and hide the record. Only the cursor blinks.
     width, fs, lh, x = 840, 17, 30, 28
     char = fs * 0.62
     # psql widens the key column to fit the record header.
     key_w = max(max(len(k) for k, _, _ in PROFILE) + 1, 14)
-    parts: list[str] = []
-    clock = 0.4
-
-    def typed(y: float, prefix: str, text: str, styled: str, idx: int) -> str:
-        """The prefix shows at once; the rest types out one character at a time.
-
-        The clip starts at full width, so renderers without SMIL show the whole line.
-        """
-        nonlocal clock
-        start, n, step = clock, len(text), 0.03
-        end = start + n * step
-        prefix_w = len(prefix) * char
-        widths = [prefix_w] + [prefix_w + i * char for i in range(1, n + 1)] + [width]
-        times = [0.0] + [(start + i * step) / end for i in range(1, n + 1)] + [1.0]
-        clock = end + 0.25
-        return (
-            f'<clipPath id="c{idx}"><rect x="{x - 2}" y="{y - fs}" height="{lh}" width="{width}">'
-            f'<animate attributeName="width" dur="{end:.2f}s" calcMode="discrete" fill="freeze" '
-            f'values="{";".join(f"{w:.1f}" for w in widths)}" keyTimes="{";".join(f"{k:.4f}" for k in times)}"/>'
-            f"</rect></clipPath>" + line(x, y, styled, f' clip-path="url(#c{idx})"')
-        )
-
-    def hold(at: float) -> str:
-        """Keep an element hidden until `at` seconds; visible by default without SMIL."""
-        return f'<animate attributeName="opacity" values="0;1" keyTimes="0;1" dur="{at:.2f}s" calcMode="discrete" fill="freeze"/>'
-
-    def shown(y: float, styled: str, at: float) -> str:
-        return line(x, y, styled + hold(at))
-
     y = 36 + 40
-    parts.append(typed(y, "$ ", "psql jayeuse", span("$ ", t["muted"]) + span("psql jayeuse", t["fg"]), 0))
+    parts = [line(x, y, span("$ ", t["muted"]) + span("psql jayeuse", t["fg"]))]
     y += lh
     query = [("kw", "SELECT"), ("id", " * "), ("kw", "FROM"), ("id", " engineer "), ("kw", "WHERE"),
              ("id", " handle = "), ("str", "'jayeuse'"), ("id", ";")]
-    parts.append(typed(y, "jayeuse=# ", "".join(s for _, s in query), prompt(t) + sql(t, query), 1))
-    reveal = clock
+    parts.append(line(x, y, prompt(t) + sql(t, query)))
     y += lh
-    parts.append(shown(y, record_header(t, key_w, 44), reveal))
-    for i, (key, value, tone) in enumerate(PROFILE):
+    parts.append(line(x, y, record_header(t, key_w, 44)))
+    for key, value, tone in PROFILE:
         y += lh
         weight = "600" if key == "name" else "normal"
-        row = span(key.ljust(key_w), t["muted"]) + span("| ", t["muted"]) + span(value, t[tone], weight)
-        parts.append(shown(y, row, reveal + 0.07 * (i + 1)))
-    end = reveal + 0.07 * (len(PROFILE) + 1)
+        parts.append(line(x, y, span(key.ljust(key_w), t["muted"]) + span("| ", t["muted"]) + span(value, t[tone], weight)))
     y += lh
-    parts.append(shown(y, span("(1 row)", t["muted"]), end))
+    parts.append(line(x, y, span("(1 row)", t["muted"])))
     y += lh * 1.25
-    parts.append(shown(y, prompt(t), end + 0.15))
+    parts.append(line(x, y, prompt(t)))
     cursor_x = x + len("jayeuse=# ") * char
     parts.append(
         f'<rect x="{cursor_x:.1f}" y="{y - fs + 3}" width="{char:.1f}" height="{fs + 2}" fill="{t["fg"]}">'
-        + hold(end + 0.15)
-        + f'<animate attributeName="opacity" values="1;0" dur="1.1s" begin="{end + 0.15:.2f}s" '
-        f'calcMode="discrete" repeatCount="indefinite"/></rect>'
+        f'<animate attributeName="opacity" values="1;0" dur="1.1s" calcMode="discrete" repeatCount="indefinite"/></rect>'
     )
     body = f'<g font-family="{MONO}" font-size="{fs}">' + "".join(parts) + "</g>"
     label = ". ".join(v for _, v, _ in PROFILE)
